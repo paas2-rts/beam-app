@@ -31,7 +31,7 @@ public class NoKafkaOperatorApp {
     private static Logger logger = LoggerFactory.getLogger(NoKafkaOperatorApp.class);
 
     public static void main(String[] args) {
-        PipelineOptions options = PipelineOptionsFactory.fromArgs(args).as(PipelineOptions.class);
+        KafkaPipelineOptions options = PipelineOptionsFactory.fromArgs(args).as(KafkaPipelineOptions.class);
         options.setJobName("SingleKafkaOperatorApp");
         Pipeline p = Pipeline.create(options);
 
@@ -80,7 +80,7 @@ public class NoKafkaOperatorApp {
                                          }
                 )).setCoder(KvCoder.of(StringUtf8Coder.of(),StringUtf8Coder.of()))
                 .apply("Write to Kafka",KafkaIO.<String,String>write()
-                        .withBootstrapServers("kafka:9092")
+                        .withBootstrapServers(options.getKafkaBrokers())
                         .withTopic("output")
                         .withKeySerializer(StringSerializer.class)
                         .withValueSerializer(StringSerializer.class));
