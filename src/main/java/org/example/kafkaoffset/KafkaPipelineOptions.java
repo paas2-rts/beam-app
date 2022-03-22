@@ -9,5 +9,5 @@ public interface KafkaPipelineOptions extends FlinkPipelineOptions {
     @Default.String("kafka-cp-kafka-headless:9092")
     String getKafkaBrokers();
 
-    void setKafkaBroker(String value);
+    void setKafkaBrokers(String value);
 }
