@@ -23,7 +23,7 @@ RUN mvn compile
 FROM builder as packager
 RUN mvn package
 
-FROM flink:1.12.2 as flinkbase
+FROM flink:1.13.6 as flinkbase
 
 RUN mkdir -p $FLINK_HOME/usrlib
 COPY --from=packager /app/target/beam-app-bundled-1.0.0.jar $FLINK_HOME/usrlib/beam-app-bundled-1.0.0.jar
