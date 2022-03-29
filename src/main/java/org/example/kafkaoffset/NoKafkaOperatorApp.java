@@ -32,54 +32,52 @@ public class NoKafkaOperatorApp {
 
     public static void main(String[] args) {
         KafkaPipelineOptions options = PipelineOptionsFactory.fromArgs(args).as(KafkaPipelineOptions.class);
-        options.setJobName("SingleKafkaOperatorApp");
+        options.setJobName("NoKafkaOperatorApp");
         Pipeline p = Pipeline.create(options);
 
-        p.apply("ReadFromKafka", GenerateSequence.from(0).withRate(1,Duration.standardSeconds(30)))
+        p.apply("ReadFromKafka", GenerateSequence.from(0).withRate(1, Duration.standardSeconds(30)))
                 .apply("Window", Window.<Long>into(new GlobalWindows())
                         .triggering(AfterPane.elementCountAtLeast(1))
                         .discardingFiredPanes()
                         .withAllowedLateness(Duration.ZERO))
-                .apply("State", ParDo.of(new DoFn<Long, KV<String,String>>() {
+                .apply("State", ParDo.of(new DoFn<Long, KV<String, String>>() {
                     @ProcessElement
                     public void process(
-                            ProcessContext c
-                    ) {
-                        c.output(KV.of("","NoKafkaOperatorApp" + c.element().toString()));
+                            ProcessContext c) {
+                        c.output(KV.of("", "NoKafkaOperatorApp" + c.element().toString()));
                     }
                 }))
-                .apply("State", ParDo.of(new DoFn<KV<String,String>, KV<String,String>>() {
-                                             @StateId("state")
-                                             private final StateSpec<ValueState<String>> leftState = StateSpecs.value();
-                                             @TimerId("gcTimer")
-                                             private final TimerSpec leftStateExpiryTimerSpec = TimerSpecs.timer(TimeDomain.EVENT_TIME);
+                .apply("State", ParDo.of(new DoFn<KV<String, String>, KV<String, String>>() {
+                    @StateId("state")
+                    private final StateSpec<ValueState<String>> leftState = StateSpecs.value();
+                    @TimerId("gcTimer")
+                    private final TimerSpec leftStateExpiryTimerSpec = TimerSpecs.timer(TimeDomain.EVENT_TIME);
 
+                    @ProcessElement
+                    public void process(
+                            ProcessContext c,
+                            @Timestamp Instant ts,
+                            @StateId("state") ValueState<String> state,
+                            @TimerId("gcTimer") Timer gcTimer) {
+                        // Set the timer to be 2 minutes after the maximum timestamp seen. This will
+                        // keep overwriting the same timer, so
+                        // as long as there is activity on this key the state will stay active. Once the
+                        // key goes inactive for 2 minutes's
+                        // worth of event time (as measured by the watermark), then the gc timer will
+                        // fire.
+                        Instant expirationTime = new Instant(ts.getMillis()).plus(Duration.standardSeconds(120));
+                        c.output(KV.of("", "NoKafkaOperatorApp" + c.element().toString()));
+                        state.write(c.element().getValue());
+                        gcTimer.set(expirationTime);
+                    }
 
-                                             @ProcessElement
-                                             public void process(
-                                                     ProcessContext c,
-                                                     @Timestamp Instant ts,
-                                                     @StateId("state") ValueState<String> state,
-                                                     @TimerId("gcTimer") Timer gcTimer
-                                             ) {
-                                                 // Set the timer to be 2 minutes after the maximum timestamp seen. This will keep overwriting the same timer, so
-                                                 // as long as there is activity on this key the state will stay active. Once the key goes inactive for 2 minutes's
-                                                 // worth of event time (as measured by the watermark), then the gc timer will fire.
-                                                 Instant expirationTime = new Instant(ts.getMillis()).plus(Duration.standardSeconds(120));
-                                                 c.output(KV.of("","NoKafkaOperatorApp" + c.element().toString()));
-                                                 state.write(c.element().getValue());
-                                                 gcTimer.set(expirationTime);
-                                             }
-
-                                             @OnTimer("gcTimer")
-                                             public void onLeftCollectionStateExpire(OnTimerContext c,
-                                                                                     @StateId("state") ValueState<String> state
-                                             ) {
-                                                 state.clear();
-                                             }
-                                         }
-                )).setCoder(KvCoder.of(StringUtf8Coder.of(),StringUtf8Coder.of()))
-                .apply("Write to Kafka",KafkaIO.<String,String>write()
+                    @OnTimer("gcTimer")
+                    public void onLeftCollectionStateExpire(OnTimerContext c,
+                            @StateId("state") ValueState<String> state) {
+                        state.clear();
+                    }
+                })).setCoder(KvCoder.of(StringUtf8Coder.of(), StringUtf8Coder.of()))
+                .apply("Write to Kafka", KafkaIO.<String, String>write()
                         .withBootstrapServers(options.getKafkaBrokers())
                         .withTopic("output")
                         .withKeySerializer(StringSerializer.class)
